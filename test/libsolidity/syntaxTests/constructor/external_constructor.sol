@@ -2,4 +2,4 @@ contract test {
 	constructor() external {}
 }
 // ----
-// TypeError: (17-42): Constructor must be public or internal.
+// SyntaxError: (17-42): Visibility specified for constructor. If you want the contract to be non-deployable, make it "abstract".
