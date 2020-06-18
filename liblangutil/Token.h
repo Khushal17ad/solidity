@@ -196,6 +196,7 @@ namespace solidity::langutil
 	\
 	/* Ether subdenominations */                                       \
 	K(SubWei, "wei", 0)                                                \
+	K(SubGwei, "gwei", 0)                                              \
 	K(SubSzabo, "szabo", 0)                                            \
 	K(SubFinney, "finney", 0)                                          \
 	K(SubEther, "ether", 0)                                            \
@@ -312,7 +313,7 @@ namespace TokenTraits
 			|| op == Token::Pure || op == Token::View || op == Token::Payable;
 	}
 
-	constexpr bool isEtherSubdenomination(Token op) { return op == Token::SubWei || op == Token::SubSzabo || op == Token::SubFinney || op == Token::SubEther; }
+	constexpr bool isEtherSubdenomination(Token op) { return op == Token::SubWei || op == Token::SubGwei || op == Token::SubSzabo || op == Token::SubFinney || op == Token::SubEther; }
 	constexpr bool isTimeSubdenomination(Token op) { return op == Token::SubSecond || op == Token::SubMinute || op == Token::SubHour || op == Token::SubDay || op == Token::SubWeek || op == Token::SubYear; }
 	constexpr bool isReservedKeyword(Token op) { return (Token::After <= op && op <= Token::Unchecked); }
 
