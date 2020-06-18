@@ -44,7 +44,7 @@ SemanticTest::SemanticTest(string const& _filename, langutil::EVMVersion _evmVer
 	EVMVersionRestrictedTestCase(_filename),
 	m_enforceViaYul(enforceViaYul)
 {
-	m_source = m_reader.source();
+	m_source = m_reader.sources();
 	m_lineOffset = m_reader.lineNumber();
 
 	string choice = m_reader.stringSetting("compileViaYul", "false");
@@ -241,7 +241,7 @@ TestCase::TestResult SemanticTest::run(ostream& _stream, string const& _linePref
 
 void SemanticTest::printSource(ostream& _stream, string const& _linePrefix, bool) const
 {
-	stringstream stream(m_source);
+	stringstream stream(m_source.sourceMap.at(m_source.mainSourceFile));
 	string line;
 	while (getline(stream, line))
 		_stream << _linePrefix << line << endl;
@@ -276,6 +276,6 @@ void SemanticTest::parseExpectations(istream& _stream)
 
 bool SemanticTest::deploy(string const& _contractName, u256 const& _value, bytes const& _arguments, map<string, solidity::test::Address> const& _libraries)
 {
-	auto output = compileAndRunWithoutCheck(m_source, _value, _contractName, _arguments, _libraries);
+	auto output = multiSourceCompileAndRunWithoutCheck(m_source.sourceMap, _value, _contractName, _arguments, _libraries);
 	return !output.empty() && m_transactionSuccessful;
 }

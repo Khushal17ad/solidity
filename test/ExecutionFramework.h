@@ -68,6 +68,15 @@ public:
 		std::map<std::string, Address> const& _libraryAddresses = std::map<std::string, Address>()
 	) = 0;
 
+	virtual bytes const& multiSourceCompileAndRunWithoutCheck(
+		std::map<std::string, std::string> const& _sources,
+		u256 const& _value = 0,
+		std::string const& _contractName = "",
+		bytes const& _arguments = bytes(),
+		std::map<std::string, Address> const& _libraryAddresses = std::map<std::string, Address>()
+	) = 0;
+
+
 	bytes const& compileAndRun(
 		std::string const& _sourceCode,
 		u256 const& _value = 0,
@@ -76,7 +85,13 @@ public:
 		std::map<std::string, Address> const& _libraryAddresses = std::map<std::string, Address>()
 	)
 	{
-		compileAndRunWithoutCheck(_sourceCode, _value, _contractName, _arguments, _libraryAddresses);
+		multiSourceCompileAndRunWithoutCheck(
+			std::map<std::string, std::string>({{ "", _sourceCode }}),
+			_value,
+			_contractName,
+			_arguments,
+			_libraryAddresses
+		);
 		BOOST_REQUIRE(m_transactionSuccessful);
 		BOOST_REQUIRE(!m_output.empty());
 		return m_output;

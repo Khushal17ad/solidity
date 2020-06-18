@@ -31,22 +31,46 @@ using namespace solidity::frontend;
 using namespace solidity::frontend::test;
 using namespace std;
 
+bytes SolidityExecutionFramework::multiSourceCompileContract(
+	map<string, string> const& _sourceCode,
+	string const& _contractName,
+	map<string, Address> const& _libraryAddresses
+)
+{
+	map<string, string> sourceCodeMap = _sourceCode;
+	for (auto &entry: sourceCodeMap)
+		addPreamble(entry.second);
+
+	return compileContractCommon(
+		sourceCodeMap,
+		_contractName,
+		_libraryAddresses
+	);
+}
+
 bytes SolidityExecutionFramework::compileContract(
 	string const& _sourceCode,
 	string const& _contractName,
 	map<string, Address> const& _libraryAddresses
 )
 {
-	// Silence compiler version warning
-	std::string sourceCode = "pragma solidity >=0.0;\n";
-	if (
-		solidity::test::CommonOptions::get().useABIEncoderV2 &&
-		_sourceCode.find("pragma experimental ABIEncoderV2;") == std::string::npos
-	)
-		sourceCode += "pragma experimental ABIEncoderV2;\n";
-	sourceCode += _sourceCode;
+	string sourceCode = _sourceCode;
+	addPreamble(sourceCode);
+	return compileContractCommon(
+		{{ "", sourceCode }},
+		_contractName,
+		_libraryAddresses
+	);
+}
+
+bytes SolidityExecutionFramework::compileContractCommon(
+	map<string, string> const& _sourceCodeMap,
+	string const& _contractName,
+	map<string, Address> const& _libraryAddresses
+)
+{
 	m_compiler.reset();
-	m_compiler.setSources({{"", sourceCode}});
+	m_compiler.setSources(_sourceCodeMap);
 	m_compiler.setLibraries(_libraryAddresses);
 	m_compiler.setRevertStringBehaviour(m_revertStrings);
 	m_compiler.setEVMVersion(m_evmVersion);
@@ -84,4 +108,16 @@ bytes SolidityExecutionFramework::compileContract(
 	if (m_showMetadata)
 		cout << "metadata: " << m_compiler.metadata(contractName) << endl;
 	return obj.bytecode;
+}
+
+void SolidityExecutionFramework::addPreamble(string& _sourceCode)
+{
+	// Silence compiler version warning
+	string preamble = "pragma solidity >=0.0;\n";
+	if (
+		solidity::test::CommonOptions::get().useABIEncoderV2 &&
+		_sourceCode.find("pragma experimental ABIEncoderV2;") == string::npos
+	)
+		preamble += "pragma experimental ABIEncoderV2;\n";
+	_sourceCode = preamble + _sourceCode;
 }

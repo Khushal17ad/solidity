@@ -59,18 +59,44 @@ public:
 		return m_output;
 	}
 
+	bytes const& multiSourceCompileAndRunWithoutCheck(
+		std::map<std::string, std::string> const& _sources,
+		u256 const& _value = 0,
+		std::string const& _contractName = "",
+		bytes const& _arguments = bytes(),
+		std::map<std::string, solidity::test::Address> const& _libraryAddresses = std::map<std::string, solidity::test::Address>()
+	) override
+	{
+		bytes bytecode = multiSourceCompileContract(_sources, _contractName, _libraryAddresses);
+		sendMessage(bytecode + _arguments, true, _value);
+		return m_output;
+	}
+
 	bytes compileContract(
 		std::string const& _sourceCode,
 		std::string const& _contractName = "",
 		std::map<std::string, solidity::test::Address> const& _libraryAddresses = std::map<std::string, solidity::test::Address>()
 	);
 
+	bytes compileContractCommon(
+		std::map<std::string, std::string> const& _sources,
+		std::string const& _contractName,
+		std::map<std::string, solidity::test::Address> const& _libraryAddresses
+	);
+
+	bytes multiSourceCompileContract(
+		std::map<std::string, std::string> const& _sources,
+		std::string const& _contractName = "",
+		std::map<std::string, solidity::test::Address> const& _libraryAddresses = std::map<std::string, solidity::test::Address>()
+	);
+
+	void addPreamble(std::string& _sourceCode);
 protected:
+	std::map<std::string, std::string> m_sourceCodeMap;
 	solidity::frontend::CompilerStack m_compiler;
 	bool m_compileViaYul = false;
 	bool m_showMetadata = false;
 	RevertStrings m_revertStrings = RevertStrings::Default;
-
 };
 
 } // end namespaces

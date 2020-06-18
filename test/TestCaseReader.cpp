@@ -39,9 +39,9 @@ TestCaseReader::TestCaseReader(string const& _filename):
 
 string const& TestCaseReader::source()
 {
-	if (m_sources.size() != 1)
+	if (m_sources.sourceMap.size() != 1)
 		BOOST_THROW_EXCEPTION(runtime_error("Expected single source definition, but got multiple sources."));
-	return m_sources.begin()->second;
+	return m_sources.sourceMap.begin()->second;
 }
 
 string TestCaseReader::simpleExpectations()
@@ -93,7 +93,7 @@ void TestCaseReader::ensureAllSettingsRead() const
 		);
 }
 
-pair<map<string, string>, size_t> TestCaseReader::parseSourcesAndSettingsWithLineNumber(istream& _stream)
+pair<SourceMap, size_t> TestCaseReader::parseSourcesAndSettingsWithLineNumber(istream& _stream)
 {
 	map<string, string> sources;
 	string currentSourceName;
@@ -118,6 +118,7 @@ pair<map<string, string>, size_t> TestCaseReader::parseSourcesAndSettingsWithLin
 		{
 			if (boost::algorithm::starts_with(line, sourceDelimiterStart) && boost::algorithm::ends_with(line, sourceDelimiterEnd))
 			{
+				// If statement registers previously parsed source
 				if (!(currentSourceName.empty() && currentSource.empty()))
 					sources[currentSourceName] = std::move(currentSource);
 				currentSource = {};
@@ -145,8 +146,9 @@ pair<map<string, string>, size_t> TestCaseReader::parseSourcesAndSettingsWithLin
 		else
 			throw runtime_error(string("Expected \"//\" or \"// ---\" to terminate settings and source."));
 	}
+	// Register last source
 	sources[currentSourceName] = currentSource;
-	return { sources, lineNumber };
+	return { { sources, currentSourceName }, lineNumber };
 }
 
 string TestCaseReader::parseSimpleExpectations(istream& _file)
