@@ -40,6 +40,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace solidity::yul
@@ -378,7 +379,23 @@ private:
 class StructuredDocumentation: public ASTNode
 {
 public:
+	// XXX Identifier is reused for content so it has a location (creating own type felt too much).
+	struct TaggedDoc { ASTPointer<Identifier> tag; std::vector<ASTPointer<Identifier>> contents; };
+	struct UntaggedDoc { std::vector<ASTPointer<ASTString>> contents; };
+	// TODO Ugh, I think there's no UntaggedDoc, but at least ParametrizedDoc.
+	using Doc = std::variant<TaggedDoc, UntaggedDoc>;
+	using DocList = std::vector<Doc>;
+
 	StructuredDocumentation(
+		int64_t _id,
+		SourceLocation const& _location,
+		std::vector<Doc> _doc
+	): ASTNode(_id, _location), m_documentation(std::move(_doc))
+	{}
+
+	std::vector<Doc> const& documentation() const noexcept { return m_documentation; }
+
+	/*[[deprecated]]*/ StructuredDocumentation(
 		int64_t _id,
 		SourceLocation const& _location,
 		ASTPointer<ASTString> _text
@@ -390,10 +407,11 @@ public:
 
 	/// @return A shared pointer of an ASTString.
 	/// Contains doxygen-style, structured documentation that is parsed later on.
-	ASTPointer<ASTString> const& text() const { return m_text; }
+	/*[[deprecated]]*/ ASTPointer<ASTString> const& text() const { return m_text; }
 
 private:
 	ASTPointer<ASTString> m_text;
+	DocList m_documentation;
 };
 
 /**

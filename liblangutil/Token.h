@@ -71,7 +71,13 @@ namespace solidity::langutil
 #define TOKEN_LIST(T, K)												\
 	/* End of source indicator. */										\
 	T(EOS, "EOS", 0)													\
-																		\
+	\
+	/* Natspec tokens. */                                               \
+	T(NatspecCommentSingle, "///", 0)                                   \
+	T(NatspecCommentBegin, "/**", 0)                                    \
+	T(NatspecTag, nullptr, 0)                                           \
+	T(NatspecValue, nullptr, 0)                                         \
+	\
 	/* Punctuators (ECMA-262, section 7.7, page 15). */				\
 	T(LParen, "(", 0)                                                   \
 	T(RParen, ")", 0)                                                   \
@@ -287,6 +293,9 @@ enum class Token : unsigned int {
 namespace TokenTraits
 {
 	constexpr size_t count() { return static_cast<size_t>(Token::NUM_TOKENS); }
+
+	// Tests whether or not given token is a Natspec comment introducer.
+	constexpr bool isNatspecCommentStart(Token tok) { return tok == Token::NatspecCommentBegin || tok == Token::NatspecCommentSingle; }
 
 	// Predicates
 	constexpr bool isElementaryTypeName(Token tok) { return Token::Int <= tok && tok < Token::TypesEnd; }

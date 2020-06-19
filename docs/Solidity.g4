@@ -53,8 +53,30 @@ contractPart
   | eventDefinition
   | enumDefinition ;
 
+//natSpec : WS* ;
+natSpec
+  : (('///' WS*) natSpecItem)+
+  | '/**' WS* natSpecItem? (LF '*'* WS* natSpecItem?)* '*/'
+  ;
+
+natSpecItem
+  : NatSpecTag WS+ NatSpecText
+  ;
+
+NatSpecTag
+  : '@author'
+  | '@dev'
+  | '@notice'
+  | '@param'
+  | '@return'
+  | '@title'
+  ;
+
+NatSpecText
+  : ~[\r\n\u000C] ;
+
 stateVariableDeclaration
-  : typeName
+  : natSpec? typeName
     ( PublicKeyword | InternalKeyword | PrivateKeyword | ConstantKeyword | ImmutableKeyword | overrideSpecifier )*
     identifier ('=' expression)? ';' ;
 
@@ -64,14 +86,14 @@ usingForDeclaration
   : 'using' identifier 'for' ('*' | typeName) ';' ;
 
 structDefinition
-  : 'struct' identifier
+  : natSpec? 'struct' identifier
     '{' ( variableDeclaration ';' (variableDeclaration ';')* )? '}' ;
 
 modifierDefinition
-  : 'modifier' identifier parameterList? ( VirtualKeyword | overrideSpecifier )* ( ';' | block ) ;
+  : natSpec? 'modifier' identifier parameterList? ( VirtualKeyword | overrideSpecifier )* ( ';' | block ) ;
 
 functionDefinition
-  : functionDescriptor parameterList modifierList returnParameters? ( ';' | block ) ;
+  : natSpec? functionDescriptor parameterList modifierList returnParameters? ( ';' | block ) ;
 
 functionDescriptor
   : 'function' ( identifier | ReceiveKeyword | FallbackKeyword )?
@@ -90,10 +112,10 @@ modifierInvocation
   : identifier ( '(' expressionList? ')' )? ;
 
 eventDefinition
-  : 'event' identifier eventParameterList AnonymousKeyword? ';' ;
+  : natSpec? 'event' identifier eventParameterList AnonymousKeyword? ';' ;
 
 enumDefinition
-  : 'enum' identifier '{' enumValue? (',' enumValue)* '}' ;
+  : natSpec? 'enum' identifier '{' enumValue? (',' enumValue)* '}' ;
 
 enumValue
   : identifier ;
@@ -478,6 +500,9 @@ VersionLiteral
 
 WS
   : [ \t\r\n\u000C]+ -> skip ;
+
+//LF
+//  : [\r\n\u000C]+ -> skip ;
 
 COMMENT
   : '/*' .*? '*/' -> channel(HIDDEN) ;

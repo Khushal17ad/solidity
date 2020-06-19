@@ -32,6 +32,9 @@
 #include <libyul/backends/evm/EVMDialect.h>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/algorithm/string/replace.hpp>
+
+#include <libsolutil/Visitor.h>
+
 #include <cctype>
 #include <vector>
 #include <regex>
@@ -142,15 +145,27 @@ void Parser::parsePragmaVersion(SourceLocation const& _location, vector<Token> c
 
 ASTPointer<StructuredDocumentation> Parser::parseStructuredDocumentation()
 {
-	if (m_scanner->currentCommentLiteral() != "")
+	// natspecComment ::= natspecSingleLineComment | natspecMultilineComment
+
+	if (currentToken() == Token::NatspecCommentSingle)
+		return parseSinglelineNatspecComment();
+	else if (m_scanner->currentToken() == Token::NatspecCommentBegin)
 	{
-		ASTNodeFactory nodeFactory{*this};
-		nodeFactory.setLocation(m_scanner->currentCommentLocation());
-		return nodeFactory.createNode<StructuredDocumentation>(
-			make_shared<ASTString>(m_scanner->currentCommentLiteral())
+		// natspecMultilineComment ::= '/**' natspecTag natspecValue
+		//                             (LF '*'? natspecTag? natspecValue)*
+		//                             LF '*/'
+
+		// TODO: should be implemented before merge
+
+		m_errorReporter.docstringParsingError(
+			2469_error,
+			currentLocation(),
+			"C-style natspec comments not implemented yet."
 		);
+		return nullptr;
 	}
-	return nullptr;
+	else
+		return nullptr;
 }
 
 ASTPointer<PragmaDirective> Parser::parsePragmaDirective()
@@ -290,18 +305,134 @@ std::pair<ContractKind, bool> Parser::parseContractKind()
 	return std::make_pair(kind, abstract);
 }
 
+ASTPointer<Identifier> Parser::parseNatspecTag()
+{
+	RecursionGuard recursionGuard(*this);
+	ASTNodeFactory nodeFactory(*this);
+	nodeFactory.markEndPosition();
+
+	expectToken(Token::NatspecTag, false);
+	return nodeFactory.createNode<Identifier>(getLiteralAndAdvance());
+}
+
+ASTPointer<Identifier> Parser::parseNatspecValue()
+{
+	RecursionGuard recursionGuard(*this);
+	ASTNodeFactory nodeFactory(*this);
+	nodeFactory.markEndPosition();
+
+	expectToken(Token::NatspecValue, false);
+	return nodeFactory.createNode<Identifier>(getLiteralAndAdvance());
+}
+
+ASTPointer<StructuredDocumentation> Parser::parseSinglelineNatspecComment()
+{
+	// natspecSingleLineComment ::= '///' natspecTag natspecValue
+	//                             ('///' natspecTag? natspecValue)* ;
+
+	expectToken(Token::NatspecCommentSingle, true);
+
+	RecursionGuard recursionGuard(*this);
+	ASTNodeFactory nodeFactory(*this);
+	StructuredDocumentation::DocList docs;
+
+	// first line
+	auto tag = parseNatspecTag();
+	expectToken(Token::NatspecValue, false);
+	docs.emplace_back(StructuredDocumentation::TaggedDoc{move(tag), {parseNatspecValue()}});
+	auto currentTag = &get<StructuredDocumentation::TaggedDoc>(docs.back());
+
+	// continuation lines
+	while (currentToken() == Token::NatspecCommentSingle)
+	{
+		advance();
+		if (currentToken() == Token::NatspecTag)
+		{
+			auto tag = parseNatspecTag();
+			expectToken(Token::NatspecValue, false);
+			auto content = parseNatspecValue();
+			docs.emplace_back(StructuredDocumentation::TaggedDoc{move(tag), {move(content)}});
+			currentTag = &get<StructuredDocumentation::TaggedDoc>(docs.back());
+		}
+
+		if (currentToken() == Token::NatspecValue)
+			currentTag->contents.emplace_back(parseNatspecValue());
+	}
+
+	nodeFactory.markEndPosition();
+
+	// TODO (Kill me): DEBUG PRINT
+	printf("Creating StructuredDocumentation with %zu docs.\n", docs.size());
+	for (auto const& p: docs)
+	{
+		if (holds_alternative<StructuredDocumentation::TaggedDoc>(p))
+		{
+			auto const& q = get<StructuredDocumentation::TaggedDoc>(p);
+			printf("\tTag: %s\n", q.tag->name().c_str());
+			for (auto const& r: q.contents)
+				printf("\t\tContent: '%s'\n", r->name().c_str());
+		}
+	}
+
+	return nodeFactory.createNode<StructuredDocumentation>(move(docs));
+}
+
+void Parser::verifyNatspec(StructuredDocumentation::DocList const& _doc)
+{
+	// TODO: This WILL be moved to SyntaxChecker.
+	auto constexpr validTags = array{
+		"author",
+		"dev",
+		"notice",
+		"param",
+		"return",
+		"title",
+	};
+
+	for (auto const tag: _doc)
+	{
+		visit(util::GenericVisitor{
+			[&](StructuredDocumentation::TaggedDoc const& tagged) {
+				if (std::find(validTags.begin(), validTags.end(), tagged.tag->name()) == validTags.end())
+					m_errorReporter.docstringParsingError(
+						2346_error,
+						tagged.tag->location(),
+						"Invalid natspec tag \"" + tagged.tag->name() + "\"."
+					);
+			},
+			[&]([[maybe_unused]] StructuredDocumentation::UntaggedDoc const& untagged) {}
+			// TODO: `@param NAME content` could be tested for NAME to also exist.
+			// TODO: `@return` could test if the function actually does return something
+			// TODO: `@retval X content` could also check for validity of X. Also, X could have been fully parsed by the expression parser (to verify validity).
+		}, tag);
+	}
+}
+
+void Parser::skipMisplacedNatspecComments()
+{
+	// Soft-recover from misplaced natspec comments by fully parsing them, and then report.
+
+	if (currentToken() == Token::NatspecCommentSingle || currentToken() == Token::NatspecCommentBegin)
+	{
+		SourceLocation sloc = currentLocation();
+		(void) parseStructuredDocumentation();
+		sloc.end = currentLocation().start;
+		m_errorReporter.warning(2468_error, sloc, "Misplaced Natspec comment.");
+	}
+}
+
 ASTPointer<ContractDefinition> Parser::parseContractDefinition()
 {
 	RecursionGuard recursionGuard(*this);
 	ASTNodeFactory nodeFactory(*this);
-	ASTPointer<ASTString> name =  nullptr;
-	ASTPointer<StructuredDocumentation> documentation;
+	ASTPointer<ASTString> name = nullptr;
+	ASTPointer<StructuredDocumentation> contractDocumentation = nullptr;
 	vector<ASTPointer<InheritanceSpecifier>> baseContracts;
 	vector<ASTPointer<ASTNode>> subNodes;
 	std::pair<ContractKind, bool> contractKind{};
 	try
 	{
-		documentation = parseStructuredDocumentation();
+		contractDocumentation = parseStructuredDocumentation();
 		contractKind = parseContractKind();
 		name = expectIdentifierToken();
 		if (m_scanner->currentToken() == Token::Is)
@@ -312,18 +443,20 @@ ASTPointer<ContractDefinition> Parser::parseContractDefinition()
 			}
 			while (m_scanner->currentToken() == Token::Comma);
 		expectToken(Token::LBrace);
-		while (true)
+		while (currentToken() != Token::RBrace)
 		{
-			Token currentTokenValue = m_scanner->currentToken();
-			if (currentTokenValue == Token::RBrace)
-				break;
-			else if (
+			ASTPointer<StructuredDocumentation> memberDocumentation = nullptr;
+			if (currentToken() == Token::NatspecCommentBegin || currentToken() == Token::NatspecCommentSingle)
+				memberDocumentation = parseStructuredDocumentation();
+
+			Token const currentTokenValue = currentToken();
+			if (
 				(currentTokenValue == Token::Function && m_scanner->peekNextToken() != Token::LParen) ||
 				currentTokenValue == Token::Constructor ||
 				currentTokenValue == Token::Receive ||
 				currentTokenValue == Token::Fallback
 			)
-				subNodes.push_back(parseFunctionDefinition());
+				subNodes.push_back(parseFunctionDefinition(memberDocumentation));
 			else if (currentTokenValue == Token::Struct)
 				subNodes.push_back(parseStructDefinition());
 			else if (currentTokenValue == Token::Enum)
@@ -338,17 +471,20 @@ ASTPointer<ContractDefinition> Parser::parseContractDefinition()
 				VarDeclParserOptions options;
 				options.isStateVariable = true;
 				options.allowInitialValue = true;
-				subNodes.push_back(parseVariableDeclaration(options));
+				subNodes.push_back(parseVariableDeclaration(options, {}, memberDocumentation));
 				expectToken(Token::Semicolon);
 			}
 			else if (currentTokenValue == Token::Modifier)
-				subNodes.push_back(parseModifierDefinition());
+				subNodes.push_back(parseModifierDefinition(memberDocumentation));
 			else if (currentTokenValue == Token::Event)
 				subNodes.push_back(parseEventDefinition());
 			else if (currentTokenValue == Token::Using)
 				subNodes.push_back(parseUsingDirective());
 			else
+			{
+				cout << "unexpected token. Received: " << currentTokenValue << " " << m_scanner->currentLiteral() << endl;
 				fatalParserError(9182_error, "Function, variable, struct or modifier declaration expected.");
+			}
 		}
 	}
 	catch (FatalError const&)
@@ -368,7 +504,7 @@ ASTPointer<ContractDefinition> Parser::parseContractDefinition()
 		expectToken(Token::RBrace);
 	return nodeFactory.createNode<ContractDefinition>(
 		name,
-		documentation,
+		contractDocumentation,
 		baseContracts,
 		subNodes,
 		contractKind.first,
@@ -555,11 +691,10 @@ Parser::FunctionHeaderParserResult Parser::parseFunctionHeader(bool _isStateVari
 	return result;
 }
 
-ASTPointer<ASTNode> Parser::parseFunctionDefinition()
+ASTPointer<ASTNode> Parser::parseFunctionDefinition(ASTPointer<StructuredDocumentation> _documentation)
 {
 	RecursionGuard recursionGuard(*this);
 	ASTNodeFactory nodeFactory(*this);
-	ASTPointer<StructuredDocumentation> documentation = parseStructuredDocumentation();
 
 	Token kind = m_scanner->currentToken();
 	ASTPointer<ASTString> name;
@@ -617,7 +752,7 @@ ASTPointer<ASTNode> Parser::parseFunctionDefinition()
 		kind,
 		header.isVirtual,
 		header.overrides,
-		documentation,
+		_documentation,
 		header.parameters,
 		header.modifiers,
 		header.returnParameters,
@@ -635,7 +770,7 @@ ASTPointer<StructDefinition> Parser::parseStructDefinition()
 	expectToken(Token::LBrace);
 	while (m_scanner->currentToken() != Token::RBrace)
 	{
-		members.push_back(parseVariableDeclaration());
+		members.push_back(parseVariableDeclaration({}, {}, parseStructuredDocumentation()));
 		expectToken(Token::Semicolon);
 	}
 	nodeFactory.markEndPosition();
@@ -679,14 +814,14 @@ ASTPointer<EnumDefinition> Parser::parseEnumDefinition()
 
 ASTPointer<VariableDeclaration> Parser::parseVariableDeclaration(
 	VarDeclParserOptions const& _options,
-	ASTPointer<TypeName> const& _lookAheadArrayType
+	ASTPointer<TypeName> const& _lookAheadArrayType,
+	ASTPointer<StructuredDocumentation> _documentation
 )
 {
 	RecursionGuard recursionGuard(*this);
 	ASTNodeFactory nodeFactory = _lookAheadArrayType ?
 		ASTNodeFactory(*this, _lookAheadArrayType) : ASTNodeFactory(*this);
 	ASTPointer<TypeName> type;
-	ASTPointer<StructuredDocumentation> const documentation = parseStructuredDocumentation();
 	if (_lookAheadArrayType)
 		type = _lookAheadArrayType;
 	else
@@ -696,8 +831,11 @@ ASTPointer<VariableDeclaration> Parser::parseVariableDeclaration(
 			nodeFactory.setEndPositionFromNode(type);
 	}
 
-	if (!_options.isStateVariable && documentation != nullptr)
+	if (!_options.isStateVariable && _documentation != nullptr)
+	{
+		cout << "natspec comment: '" << *_documentation->text() << "'" << endl;
 		parserWarning(2837_error, "Only state variables can have a docstring. This will be disallowed in 0.7.0.");
+	}
 
 	if (dynamic_cast<FunctionTypeName*>(type.get()) && _options.isStateVariable && m_scanner->currentToken() == Token::LBrace)
 		fatalParserError(
@@ -813,7 +951,7 @@ ASTPointer<VariableDeclaration> Parser::parseVariableDeclaration(
 		identifier,
 		value,
 		visibility,
-		documentation,
+		_documentation,
 		_options.isStateVariable,
 		isIndexed,
 		mutability,
@@ -822,14 +960,13 @@ ASTPointer<VariableDeclaration> Parser::parseVariableDeclaration(
 	);
 }
 
-ASTPointer<ModifierDefinition> Parser::parseModifierDefinition()
+ASTPointer<ModifierDefinition> Parser::parseModifierDefinition(ASTPointer<StructuredDocumentation> _documentation)
 {
 	RecursionGuard recursionGuard(*this);
 	ScopeGuard resetModifierFlag([this]() { m_insideModifier = false; });
 	m_insideModifier = true;
 
 	ASTNodeFactory nodeFactory(*this);
-	ASTPointer<StructuredDocumentation> documentation = parseStructuredDocumentation();
 
 	expectToken(Token::Modifier);
 	ASTPointer<ASTString> name(expectIdentifierToken());
@@ -877,7 +1014,7 @@ ASTPointer<ModifierDefinition> Parser::parseModifierDefinition()
 	else
 		m_scanner->next(); // just consume the ';'
 
-	return nodeFactory.createNode<ModifierDefinition>(name, documentation, parameters, isVirtual, overrides, block);
+	return nodeFactory.createNode<ModifierDefinition>(name, _documentation, parameters, isVirtual, overrides, block);
 }
 
 ASTPointer<EventDefinition> Parser::parseEventDefinition()
@@ -1812,9 +1949,12 @@ ASTPointer<Expression> Parser::parseLeftHandSideExpression(
 
 ASTPointer<Expression> Parser::parsePrimaryExpression()
 {
+	Token const token = m_scanner->currentToken();
+	if (token == Token::NatspecCommentBegin || token == Token::NatspecCommentSingle)
+		skipMisplacedNatspecComments();
+
 	RecursionGuard recursionGuard(*this);
 	ASTNodeFactory nodeFactory(*this);
-	Token token = m_scanner->currentToken();
 	ASTPointer<Expression> expression;
 
 	switch (token)
@@ -1907,6 +2047,11 @@ ASTPointer<Expression> Parser::parsePrimaryExpression()
 	}
 	case Token::Illegal:
 		fatalParserError(8936_error, to_string(m_scanner->currentError()));
+		break;
+	case Token::NatspecCommentBegin:
+	case Token::NatspecCommentSingle:
+		skipMisplacedNatspecComments();
+		expression = parsePrimaryExpression();
 		break;
 	default:
 		if (TokenTraits::isElementaryTypeName(token))

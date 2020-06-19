@@ -170,6 +170,8 @@ public:
 	std::tuple<int, int> translatePositionToLineColumn(int _position) const { return m_source->translatePositionToLineColumn(_position); }
 	///@}
 
+	std::optional<Token> scanNatspecValue();
+
 private:
 	inline Token setError(ScannerError _error) noexcept
 	{

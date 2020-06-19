@@ -80,7 +80,6 @@ private:
 	///@{
 	///@name Parsing functions for the AST nodes
 	void parsePragmaVersion(langutil::SourceLocation const& _location, std::vector<Token> const& _tokens, std::vector<std::string> const& _literals);
-	ASTPointer<StructuredDocumentation> parseStructuredDocumentation();
 	ASTPointer<PragmaDirective> parsePragmaDirective();
 	ASTPointer<ImportDirective> parseImportDirective();
 	/// @returns an std::pair<ContractKind, bool>, where
@@ -92,15 +91,16 @@ private:
 	ASTPointer<OverrideSpecifier> parseOverrideSpecifier();
 	StateMutability parseStateMutability();
 	FunctionHeaderParserResult parseFunctionHeader(bool _isStateVariable);
-	ASTPointer<ASTNode> parseFunctionDefinition();
+	ASTPointer<ASTNode> parseFunctionDefinition(ASTPointer<StructuredDocumentation> _documentation);
 	ASTPointer<StructDefinition> parseStructDefinition();
 	ASTPointer<EnumDefinition> parseEnumDefinition();
 	ASTPointer<EnumValue> parseEnumValue();
 	ASTPointer<VariableDeclaration> parseVariableDeclaration(
 		VarDeclParserOptions const& _options = {},
-		ASTPointer<TypeName> const& _lookAheadArrayType = ASTPointer<TypeName>()
+		ASTPointer<TypeName> const& _lookAheadArrayType = ASTPointer<TypeName>(),
+		ASTPointer<StructuredDocumentation> _documentation = nullptr
 	);
-	ASTPointer<ModifierDefinition> parseModifierDefinition();
+	ASTPointer<ModifierDefinition> parseModifierDefinition(ASTPointer<StructuredDocumentation> _documentation);
 	ASTPointer<EventDefinition> parseEventDefinition();
 	ASTPointer<UsingForDirective> parseUsingDirective();
 	ASTPointer<ModifierInvocation> parseModifierInvocation();
@@ -150,6 +150,19 @@ private:
 	std::vector<ASTPointer<Expression>> parseFunctionCallListArguments();
 	std::pair<std::vector<ASTPointer<Expression>>, std::vector<ASTPointer<ASTString>>> parseFunctionCallArguments();
 	std::pair<std::vector<ASTPointer<Expression>>, std::vector<ASTPointer<ASTString>>> parseNamedArguments();
+	///@}
+
+	///@{
+	///@name Natspec parsing
+
+	ASTPointer<StructuredDocumentation> parseStructuredDocumentation();
+	/// Parses a sequence of /// natspec comments
+	ASTPointer<StructuredDocumentation> parseSinglelineNatspecComment();
+	/// Skips any number of natspec comments in the token stream and reports them as misplaced.
+	void skipMisplacedNatspecComments();
+	ASTPointer<Identifier> parseNatspecTag();
+	ASTPointer<Identifier> parseNatspecValue();
+	void verifyNatspec(StructuredDocumentation::DocList const& _doc); // TODO This function will move to SyntaxChecker.
 	///@}
 
 	///@{

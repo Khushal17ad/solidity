@@ -99,6 +99,9 @@ enum LiteralType
 	LITERAL_TYPE_COMMENT
 };
 
+/// Little helper API to help constructing the literal value of the NextNext token.
+///
+/// I.e. if the literally could not be fully constructed, it'll be reset to an empty string again.
 class LiteralScope
 {
 public:
@@ -442,12 +445,9 @@ Token Scanner::scanSlash()
 			// "////"
 			if (m_char == '/')
 				return skipSingleLineComment();
-			// doxygen style /// comment
-			m_skippedComments[NextNext].location.start = firstSlashPosition;
-			m_skippedComments[NextNext].location.source = m_source;
-			m_skippedComments[NextNext].token = Token::CommentLiteral;
-			m_skippedComments[NextNext].location.end = static_cast<int>(scanSingleLineDocComment());
-			return Token::Whitespace;
+
+			// doxygen style /// Natspec-comment
+			return Token::NatspecCommentSingle;
 		}
 		else
 			return skipSingleLineComment();
@@ -504,6 +504,10 @@ void Scanner::scanToken()
 	{
 		// Remember the position of the next token
 		m_tokens[NextNext].location.start = static_cast<int>(sourcePos());
+
+		if (auto const actualToken = scanNatspecValue(); actualToken.has_value())
+			token = actualToken.value();
+		else
 		switch (m_char)
 		{
 		case '"':
@@ -594,6 +598,17 @@ void Scanner::scanToken()
 		case '/':
 			// /  // /* /=
 			token = scanSlash();
+			break;
+		case '@': // NatspecTag ::= '@' IDENTIFIER
+			{
+				advance();
+				LiteralScope literal(this, LITERAL_TYPE_STRING);
+				while (!m_source->isPastEndOfInput() && isIdentifierPart(m_char))
+					addLiteralCharAndAdvance();
+				literal.complete();
+				token = Token::NatspecTag;
+				cout << "Scanner: NatspecTag detected: '" << m_tokens[NextNext].literal << "'\n";
+			}
 			break;
 		case '&':
 			// & && &=
@@ -696,12 +711,48 @@ void Scanner::scanToken()
 		}
 		// Continue scanning for tokens as long as we're just skipping
 		// whitespace.
+		// printf("Scanner.scanToken: %d+%d %s; \"%s\"\n",
+		// 		m_tokens[NextNext].location.start,
+		// 		static_cast<int>(sourcePos()) - m_tokens[NextNext].location.start,
+		// 		static_cast<stringstream&>(stringstream{} << token).str().c_str(),
+		// 		m_tokens[NextNext].literal.c_str());
 	}
 	while (token == Token::Whitespace);
 	m_tokens[NextNext].location.end = static_cast<int>(sourcePos());
 	m_tokens[NextNext].location.source = m_source;
 	m_tokens[NextNext].token = token;
 	m_tokens[NextNext].extendedTokenInfo = make_tuple(m, n);
+}
+
+optional<Token> Scanner::scanNatspecValue()
+{
+	auto const prevToken = m_tokens[Next].token;
+
+	// A NatspecValue token MUST follow either a NatspecTag or a Natspec comment introducer token.
+	// We also generally don't parse leading whitespace.
+	if (!(prevToken == Token::NatspecTag ||
+			(TokenTraits::isNatspecCommentStart(prevToken) && m_char != '@' && !isWhiteSpace(m_char))))
+		return nullopt;
+
+	// TODO: also return nullptr a linefeed was detected between the previous token and now.
+
+	// TODO: potentially skip leading *'s if the current lexical context is a multiline comment.
+	// TODO: We could make this a little more context aware, so that @param's following token is an identifier and *then* a NatspecValue.
+
+	// parse natspec value, i.e. the rest of the current line if preceding token is a NatspecTag.
+
+	// consume until end of line
+	LiteralScope literal(this, LITERAL_TYPE_STRING);
+	while (!isSourcePastEndOfInput() && !isUnicodeLinebreak())
+		addLiteralCharAndAdvance();
+	literal.complete();
+
+	// printf("Scanner: NatspecValue: %d+%d '%s'\n",
+	// 		m_tokens[NextNext].location.start,
+	// 		static_cast<int>(sourcePos()) - m_tokens[NextNext].location.start,
+	// 		m_tokens[NextNext].literal.c_str());
+
+	return Token::NatspecValue;
 }
 
 bool Scanner::scanEscape()

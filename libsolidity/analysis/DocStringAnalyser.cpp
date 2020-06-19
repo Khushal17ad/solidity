@@ -152,7 +152,7 @@ void DocStringAnalyser::parseDocStrings(
 )
 {
 	DocStringParser parser;
-	if (_node.documentation() && !_node.documentation()->text()->empty())
+	if (_node.documentation() && _node.documentation()->text() && !_node.documentation()->text()->empty())
 	{
 		parser.parse(*_node.documentation()->text(), m_errorReporter);
 		_annotation.docTags = parser.tags();
