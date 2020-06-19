@@ -128,6 +128,7 @@ private:
 	Dialect const& m_dialect;
 	/// Names of data objects to be referenced by builtin functions with literal arguments.
 	std::set<YulString> m_dataNames;
+	bool m_visitingLiteralUsedAsLiteralArgument = false;
 	ForLoop const* m_currentForLoop = nullptr;
 };
 

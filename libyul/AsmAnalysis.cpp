@@ -80,7 +80,11 @@ AsmAnalysisInfo AsmAnalyzer::analyzeStrictAssertCorrect(Dialect const& _dialect,
 vector<YulString> AsmAnalyzer::operator()(Literal const& _literal)
 {
 	expectValidType(_literal.type, _literal.location);
-	if (_literal.kind == LiteralKind::String && _literal.value.str().size() > 32)
+	if (
+		_literal.kind == LiteralKind::String &&
+		_literal.value.str().size() > 32 &&
+		!m_visitingLiteralUsedAsLiteralArgument
+	)
 		m_errorReporter.typeError(
 			3069_error,
 			_literal.location,
@@ -302,7 +306,14 @@ vector<YulString> AsmAnalyzer::operator()(FunctionCall const& _funCall)
 	{
 		Expression const& arg = _funCall.arguments[i - 1];
 
+		yulAssert(!m_visitingLiteralUsedAsLiteralArgument, "");
+		m_visitingLiteralUsedAsLiteralArgument =
+			needsLiteralArguments &&
+			(*needsLiteralArguments)[i - 1] &&
+			holds_alternative<Literal>(arg);
+
 		argTypes.emplace_back(expectExpression(arg));
+		m_visitingLiteralUsedAsLiteralArgument = false;
 
 		if (needsLiteralArguments && (*needsLiteralArguments)[i - 1])
 		{
