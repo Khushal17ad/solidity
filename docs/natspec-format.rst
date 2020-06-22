@@ -42,10 +42,6 @@ The following example shows a contract and a function using all available tags.
 
 .. note::
 
-  NatSpec currently does NOT apply to public state variables (see
-  `solidity#3418 <https://github.com/ethereum/solidity/issues/3418>`__),
-  even if they are declared public and therefore do affect the ABI.
-
   The Solidity compiler only interprets tags if they are external or
   public. You are welcome to use similar comments for your internal and
   private functions, but those will not be parsed.
@@ -91,7 +87,7 @@ in the same way as if it were tagged with ``@notice``.
 Tag                                                                                                    Context
 =============== ====================================================================================== =============================
 ``@title``      A title that should describe the contract/interface                                    contract, interface
-``@author``     The name of the author                                                                 contract, interface, function
+``@author``     The name of the author                                                                 contract, interface
 ``@notice``     Explain to an end user what this does                                                  contract, interface, function, public state variable
 ``@dev``        Explain to a developer any extra details                                               contract, interface, function, state variable
 ``@param``      Documents a parameter just like in doxygen (must be followed by parameter name)        function
